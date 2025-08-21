@@ -1,0 +1,28 @@
+name: Extract PDF text
+
+on:
+  push:
+    paths:
+      - 'manuals/*.pdf'
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install deps
+        run: pip install pdfminer.six
+      - name: Extract text
+        run: |
+          mkdir -p manuals_text
+          for f in manuals/*.pdf; do
+            fname=$(basename "$f" .pdf)
+            python -m pdfminer.high_level "$f" > "manuals_text/$fname.txt"
+          done
+      - name: Commit results
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add manuals_text
+          git commit -m "Update extracted text" || echo "No changes"
+          git push
