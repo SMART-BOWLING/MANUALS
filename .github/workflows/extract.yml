@@ -26,3 +26,4 @@ jobs:
           git add manuals_text
           git commit -m "Update extracted text" || echo "No changes"
           git push
+
