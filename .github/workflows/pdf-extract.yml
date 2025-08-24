@@ -2,9 +2,6 @@ name: Extract PDF Text
 
 on: 
   workflow_dispatch
-  push:
-    paths:
-      - 'manuals/**.pdf'
 
 jobs:
   extract:
@@ -25,6 +22,7 @@ jobs:
     - name: Extract text from PDFs
       run: |
         mkdir -p extracted_text
+        echo "Starting PDF extraction..."
         
         for pdf in manuals/*.pdf; do
           echo "Processing: $pdf"
@@ -38,10 +36,10 @@ import re
 texts = []
 try:
     with pdfplumber.open('$pdf') as pdf:
-        for i, page in enumerate(pdf.pages[:3]):  # First 3 pages
+        for i, page in enumerate(pdf.pages[:3]):
             text = page.extract_text()
             if text:
-                clean_text = re.sub(r'\s+', ' ', text).strip()
+                clean_text = re.sub(r'\\s+', ' ', text).strip()
                 if len(clean_text) > 50:
                     texts.append({
                         'file': '$filename.pdf',
@@ -52,12 +50,12 @@ try:
     if texts:
         with open(f'extracted_text/{filename}.json', 'w') as f:
             json.dump(texts, f, indent=2)
-        print(f'✓ Extracted {len(texts)} pages from $pdf')
+        print(f'Success: Extracted {len(texts)} pages from {filename}.pdf')
     else:
-        print(f'✗ No text found in $pdf')
+        print(f'Warning: No text found in {filename}.pdf')
         
 except Exception as e:
-    print(f'Error with $pdf: {e}')
+    print(f'Error with {filename}.pdf: {e}')
           "
         done
 
