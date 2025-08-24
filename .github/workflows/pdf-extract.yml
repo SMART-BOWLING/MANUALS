@@ -28,8 +28,7 @@ jobs:
           echo "Processing: $pdf"
           filename=$(basename "$pdf" .pdf)
           
-          python -c "
-import pdfplumber
+          python -c "import pdfplumber
 import json
 import re
 
@@ -61,8 +60,7 @@ except Exception as e:
 
     - name: Create manuals.json
       run: |
-        python -c "
-import json
+        python -c "import json
 import glob
 
 all_data = []
