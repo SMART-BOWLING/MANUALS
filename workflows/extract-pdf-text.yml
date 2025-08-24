@@ -14,8 +14,6 @@ jobs:
     steps:
     - name: 🛎️ Checkout repository
       uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: 🐍 Set up Python
       uses: actions/setup-python@v5
@@ -32,20 +30,15 @@ jobs:
         echo "Starting PDF text extraction..."
         mkdir -p extracted_text
         
-        # Create empty array for all data
-        all_manuals_data=[]
-        
         for pdf_file in manuals/*.pdf; do
           if [ -f "$pdf_file" ]; then
             filename=$(basename "$pdf_file" .pdf)
             echo "Processing: $filename.pdf"
             
-            # Extract text using Python
             python -c "
 import pdfplumber
 import json
 import re
-import os
 
 text_segments = []
 try:
@@ -53,7 +46,6 @@ try:
         for page_num, page in enumerate(pdf.pages, 1):
             text = page.extract_text()
             if text:
-                # Clean text
                 text = re.sub(r'\s+', ' ', text).strip()
                 if len(text) > 50:
                     text_segments.append({
@@ -61,12 +53,9 @@ try:
                         'page': page_num,
                         'text': text[:1000] + '...' if len(text) > 1000 else text
                     })
-            
-            # Limit to first 20 pages for performance
             if page_num >= 20:
                 break
                 
-    # Save individual file data
     if text_segments:
         with open(f'extracted_text/{filename}.json', 'w', encoding='utf-8') as f:
             json.dump(text_segments, f, indent=2, ensure_ascii=False)
@@ -80,7 +69,7 @@ except Exception as e:
           fi
         done
 
-    - name: 📁 Combine all JSON data
+    - name: 📁 Create manuals.json
       run: |
         python -c "
 import json
@@ -92,14 +81,13 @@ for json_file in glob.glob('extracted_text/*.json'):
         with open(json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
             all_data.extend(data)
-    except Exception as e:
-        print(f'Error reading {json_file}: {e}')
+    except:
+        continue
 
-# Save combined data
 with open('manuals/manuals.json', 'w', encoding='utf-8') as f:
     json.dump(all_data, f, indent=2, ensure_ascii=False)
 
-print(f'✓ Combined {len(all_data)} segments into manuals.json')
+print(f'✓ Created manuals.json with {len(all_data)} segments')
         "
 
     - name: 📤 Commit and push results
@@ -115,5 +103,4 @@ print(f'✓ Combined {len(all_data)} segments into manuals.json')
         else
           git commit -m "🤖 Auto: Extract text from PDF manuals"
           git push
-          echo "✓ Changes committed and pushed"
         fi
