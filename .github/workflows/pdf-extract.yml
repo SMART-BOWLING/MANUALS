@@ -1,36 +1,27 @@
 name: Extract PDF Text
 
-on: 
-  workflow_dispatch
+on: workflow_dispatch
 
 jobs:
   extract:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-        
-    - name: Install dependencies
-      run: pip install pdfplumber
-      
-    - name: Extract text from PDFs
-      run: |
-        mkdir -p extracted_text
-        echo "Starting PDF extraction..."
-        
-        # Простая команда для теста
-        python -c "
-print('PDF extraction would start here')
-print('First we test that Python works')
-        "
-        
-    - name: Create manuals.json
-      run: |
-        echo '[]' > manuals/manuals.json
-        echo "Created empty manuals.json"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install pdfplumber
+
+      - name: Create extracted text directory
+        run: mkdir -p extracted_text
+
+      - name: Create empty manuals.json
+        run: echo '[]' > manuals/manuals.json
+
+      - name: Test PDF extraction
+        run: echo "PDF extraction will be added in next step"
