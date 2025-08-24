@@ -20,75 +20,77 @@ jobs:
       - name: Create directories
         run: mkdir -p extracted_text
 
-      - name: Extract text from all PDFs
+      - name: Create Python script for extraction
         run: |
-          echo "Starting PDF text extraction..."
-          for pdf in manuals/*.pdf; do
-            filename=$(basename "$pdf" .pdf)
-            echo "Processing: $filename.pdf"
-            
-            python -c "
+          cat > extract_text.py << 'EOL'
 import pdfplumber
 import json
 import re
-
-output = []
-try:
-    with pdfplumber.open('$pdf') as pdf:
-        # Берем только первую страницу для начала
-        if pdf.pages:
-            page = pdf.pages[0]
-            text = page.extract_text()
-            if text:
-                # Очищаем текст
-                clean_text = re.sub(r'\\s+', ' ', text).strip()
-                if clean_text:
-                    output.append({
-                        'file': '$filename.pdf',
-                        'page': 1,
-                        'text': clean_text[:500] + '...' if len(clean_text) > 500 else clean_text
-                    })
-    
-    # Сохраняем результат
-    if output:
-        with open(f'extracted_text/{filename}.json', 'w', encoding='utf-8') as f:
-            json.dump(output, f, indent=2, ensure_ascii=False)
-        print(f'✓ Success: Extracted text from {filename}.pdf')
-    else:
-        print(f'✗ No text found in {filename}.pdf')
-        
-except Exception as e:
-    print(f'✗ Error with {filename}.pdf: {str(e)}')
-            "
-          done
-
-      - name: Combine all JSON files
-        run: |
-          python -c "
-import json
 import glob
+import os
 
-all_data = []
-json_files = glob.glob('extracted_text/*.json')
+def extract_pdf_text():
+    # Создаем папку если нет
+    os.makedirs('extracted_text', exist_ok=True)
+    
+    all_data = []
+    pdf_files = glob.glob('manuals/*.pdf')
+    
+    print(f"Found {len(pdf_files)} PDF files")
+    
+    for pdf_path in pdf_files:
+        filename = os.path.basename(pdf_path)
+        name_without_ext = os.path.splitext(filename)[0]
+        output_data = []
+        
+        try:
+            print(f"Processing: {filename}")
+            with pdfplumber.open(pdf_path) as pdf:
+                # Берем только первую страницу для теста
+                if pdf.pages:
+                    page = pdf.pages[0]
+                    text = page.extract_text()
+                    if text:
+                        clean_text = re.sub(r'\s+', ' ', text).strip()
+                        if clean_text:
+                            output_data.append({
+                                'file': filename,
+                                'page': 1,
+                                'text': clean_text[:500] + '...' if len(clean_text) > 500 else clean_text
+                            })
+            
+            # Сохраняем результат для каждого PDF
+            if output_data:
+                output_file = f'extracted_text/{name_without_ext}.json'
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump(output_data, f, indent=2, ensure_ascii=False)
+                print(f'✓ Extracted {len(output_data)} segments from {filename}')
+                all_data.extend(output_data)
+            else:
+                print(f'✗ No text found in {filename}')
+                
+        except Exception as e:
+            print(f'✗ Error with {filename}: {str(e)}')
+    
+    # Сохраняем объединенные данные
+    with open('manuals/manuals.json', 'w', encoding='utf-8') as f:
+        json.dump(all_data, f, indent=2, ensure_ascii=False)
+    
+    print(f'✓ Total: {len(all_data)} text segments extracted')
 
-for json_file in json_files:
-    try:
-        with open(json_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            all_data.extend(data)
-        print(f'✓ Added data from {json_file}')
-    except Exception as e:
-        print(f'✗ Error reading {json_file}: {e}')
+if __name__ == "__main__":
+    extract_pdf_text()
+EOL
 
-# Сохраняем объединенные данные
-with open('manuals/manuals.json', 'w', encoding='utf-8') as f:
-    json.dump(all_data, f, indent=2, ensure_ascii=False)
-
-print(f'✓ Created manuals.json with {len(all_data)} text segments')
-          "
+      - name: Run PDF text extraction
+        run: python extract_text.py
 
       - name: Show results
         run: |
           echo "=== Extraction completed ==="
-          echo "JSON files created: $(ls extracted_text/*.json 2>/dev/null | wc -l)"
-          echo "Total text segments: $(python -c \"import json; f=open('manuals/manuals.json'); data=json.load(f); print(len(data))\" 2>/dev/null || echo 0)"
+          echo "JSON files created: $(ls extracted_text/*.json 2>/dev/null | wc -l || echo 0)"
+          if [ -f "manuals/manuals.json" ]; then
+            echo "Total text segments: $(python -c \"import json; f=open('manuals/manuals.json'); print(len(json.load(f))); f.close()\")"
+          else
+            echo "manuals.json not found"
+          fi
