@@ -1,0 +1,119 @@
+name: 📄 Extract PDF Text to JSON
+
+on:
+  push:
+    paths:
+      - 'manuals/**.pdf'
+  workflow_dispatch:
+
+jobs:
+  extract-pdf-text:
+    runs-on: ubuntu-latest
+    name: Extract text from PDF manuals
+    
+    steps:
+    - name: 🛎️ Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pdfplumber
+
+    - name: 📖 Extract text from PDFs
+      run: |
+        echo "Starting PDF text extraction..."
+        mkdir -p extracted_text
+        
+        # Create empty array for all data
+        all_manuals_data=[]
+        
+        for pdf_file in manuals/*.pdf; do
+          if [ -f "$pdf_file" ]; then
+            filename=$(basename "$pdf_file" .pdf)
+            echo "Processing: $filename.pdf"
+            
+            # Extract text using Python
+            python -c "
+import pdfplumber
+import json
+import re
+import os
+
+text_segments = []
+try:
+    with pdfplumber.open('$pdf_file') as pdf:
+        for page_num, page in enumerate(pdf.pages, 1):
+            text = page.extract_text()
+            if text:
+                # Clean text
+                text = re.sub(r'\s+', ' ', text).strip()
+                if len(text) > 50:
+                    text_segments.append({
+                        'file': '$filename.pdf',
+                        'page': page_num,
+                        'text': text[:1000] + '...' if len(text) > 1000 else text
+                    })
+            
+            # Limit to first 20 pages for performance
+            if page_num >= 20:
+                break
+                
+    # Save individual file data
+    if text_segments:
+        with open(f'extracted_text/{filename}.json', 'w', encoding='utf-8') as f:
+            json.dump(text_segments, f, indent=2, ensure_ascii=False)
+        print(f'✓ Extracted {len(text_segments)} segments from {filename}.pdf')
+    else:
+        print(f'✗ No text extracted from {filename}.pdf')
+        
+except Exception as e:
+    print(f'Error processing {filename}.pdf: {e}')
+            "
+          fi
+        done
+
+    - name: 📁 Combine all JSON data
+      run: |
+        python -c "
+import json
+import glob
+
+all_data = []
+for json_file in glob.glob('extracted_text/*.json'):
+    try:
+        with open(json_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            all_data.extend(data)
+    except Exception as e:
+        print(f'Error reading {json_file}: {e}')
+
+# Save combined data
+with open('manuals/manuals.json', 'w', encoding='utf-8') as f:
+    json.dump(all_data, f, indent=2, ensure_ascii=False)
+
+print(f'✓ Combined {len(all_data)} segments into manuals.json')
+        "
+
+    - name: 📤 Commit and push results
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        git add extracted_text/
+        git add manuals/manuals.json
+        
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "🤖 Auto: Extract text from PDF manuals"
+          git push
+          echo "✓ Changes committed and pushed"
+        fi
