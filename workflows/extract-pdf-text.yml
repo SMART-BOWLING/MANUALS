@@ -1,106 +1,89 @@
-name: 📄 Extract PDF Text to JSON
+name: Extract PDF Text
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'manuals/**.pdf'
-  workflow_dispatch:
 
 jobs:
-  extract-pdf-text:
+  extract-text:
     runs-on: ubuntu-latest
-    name: Extract text from PDF manuals
     
     steps:
-    - name: 🛎️ Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: 🐍 Set up Python
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
-    - name: 📦 Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pdfplumber
+    - name: Install dependencies
+      run: pip install pdfplumber
 
-    - name: 📖 Extract text from PDFs
+    - name: Extract text from PDFs
       run: |
-        echo "Starting PDF text extraction..."
         mkdir -p extracted_text
         
-        for pdf_file in manuals/*.pdf; do
-          if [ -f "$pdf_file" ]; then
-            filename=$(basename "$pdf_file" .pdf)
-            echo "Processing: $filename.pdf"
-            
-            python -c "
+        for pdf in manuals/*.pdf; do
+          echo "Processing: $pdf"
+          filename=$(basename "$pdf" .pdf)
+          
+          python -c "
 import pdfplumber
 import json
 import re
 
-text_segments = []
+output = []
 try:
-    with pdfplumber.open('$pdf_file') as pdf:
-        for page_num, page in enumerate(pdf.pages, 1):
+    with pdfplumber.open('$pdf') as pdf:
+        for i, page in enumerate(pdf.pages[:10]):  # First 10 pages only
             text = page.extract_text()
             if text:
-                text = re.sub(r'\s+', ' ', text).strip()
-                if len(text) > 50:
-                    text_segments.append({
+                clean_text = re.sub(r'\s+', ' ', text).strip()
+                if len(clean_text) > 100:
+                    output.append({
                         'file': '$filename.pdf',
-                        'page': page_num,
-                        'text': text[:1000] + '...' if len(text) > 1000 else text
+                        'page': i + 1,
+                        'text': clean_text[:500] + '...' if len(clean_text) > 500 else clean_text
                     })
-            if page_num >= 20:
-                break
-                
-    if text_segments:
-        with open(f'extracted_text/{filename}.json', 'w', encoding='utf-8') as f:
-            json.dump(text_segments, f, indent=2, ensure_ascii=False)
-        print(f'✓ Extracted {len(text_segments)} segments from {filename}.pdf')
-    else:
-        print(f'✗ No text extracted from {filename}.pdf')
+    
+    with open(f'extracted_text/{filename}.json', 'w') as f:
+        json.dump(output, f, indent=2)
         
+    print(f'Saved {len(output)} segments from {filename}.pdf')
+    
 except Exception as e:
-    print(f'Error processing {filename}.pdf: {e}')
-            "
-          fi
+    print(f'Error with {filename}: {e}')
+          "
         done
 
-    - name: 📁 Create manuals.json
+    - name: Create combined JSON
       run: |
         python -c "
 import json
 import glob
 
 all_data = []
-for json_file in glob.glob('extracted_text/*.json'):
+for f in glob.glob('extracted_text/*.json'):
     try:
-        with open(json_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        with open(f) as file:
+            data = json.load(file)
             all_data.extend(data)
     except:
         continue
 
-with open('manuals/manuals.json', 'w', encoding='utf-8') as f:
-    json.dump(all_data, f, indent=2, ensure_ascii=False)
+with open('manuals/manuals.json', 'w') as f:
+    json.dump(all_data, f, indent=2)
 
-print(f'✓ Created manuals.json with {len(all_data)} segments')
+print(f'Total segments: {len(all_data)}')
         "
 
-    - name: 📤 Commit and push results
+    - name: Commit results
       run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        
-        git add extracted_text/
-        git add manuals/manuals.json
-        
-        if git diff --staged --quiet; then
-          echo "No changes to commit"
-        else
-          git commit -m "🤖 Auto: Extract text from PDF manuals"
-          git push
-        fi
+        git config --local user.email "actions@github.com"
+        git config --local user.name "GitHub Actions"
+        git add extracted_text/ manuals/manuals.json
+        git commit -m "Extract PDF text" || echo "No changes"
+        git push
