@@ -1,10 +1,10 @@
-# .github/workflows/extract.yml
-name: Extract PDF Text
+name: Extract PDF Text to JSON
 
 on:
   push:
     paths:
       - 'manuals/**.pdf'
+  workflow_dispatch: #允许手动触发
 
 jobs:
   extract-text:
@@ -12,6 +12,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -23,37 +25,72 @@ jobs:
         python -m pip install --upgrade pip
         pip install pdfplumber
 
-    - name: Extract text from PDFs
+    - name: Extract text from PDFs to JSON
       run: |
         mkdir -p extracted_text
+        manuals_data=[]
+        
         for pdf in manuals/*.pdf; do
           filename=$(basename "$pdf" .pdf)
+          echo "Processing: $filename.pdf"
+          
+          # Extract text from PDF
           python -c "
 import pdfplumber
 import json
 import re
 
-text_content = []
+text_segments = []
 with pdfplumber.open('$pdf') as pdf:
-    for page in pdf.pages:
+    for page_num, page in enumerate(pdf.pages, 1):
         text = page.extract_text()
         if text:
             # Clean up text
-            text = re.sub(r'\s+', ' ', text)
-            text_content.append(text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            if len(text) > 50:  # Only add meaningful text
+                text_segments.append({
+                    'file': '$filename.pdf',
+                    'page': page_num,
+                    'text': text
+                })
+                
+        # Limit to first 50 pages for efficiency
+        if page_num >= 50:
+            break
 
-# Save extracted text
-with open(f'extracted_text/{filename}.txt', 'w') as f:
-    f.write('\n'.join(text_content))
+# Save to JSON
+with open(f'extracted_text/{filename}.json', 'w') as f:
+    json.dump(text_segments, f, indent=2, ensure_ascii=False)
 
-print(f'Extracted text from {filename}.pdf')
+print(f'Extracted {len(text_segments)} segments from {filename}.pdf')
           "
         done
 
+    - name: Combine all JSON files
+      run: |
+        python -c "
+import json
+import glob
+import os
+
+all_data = []
+for json_file in glob.glob('extracted_text/*.json'):
+    with open(json_file, 'r') as f:
+        data = json.load(f)
+        all_data.extend(data)
+
+# Save combined data
+with open('manuals/manuals.json', 'w') as f:
+    json.dump(all_data, f, indent=2, ensure_ascii=False)
+
+print(f'Combined {len(all_data)} segments into manuals.json')
+        "
+
     - name: Commit and push extracted text
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
         git add extracted_text/
-        git commit -m "Add extracted text from PDFs" || echo "No changes to commit"
+        git add manuals/manuals.json
+        git commit -m "Auto: Extract text from PDFs" || echo "No changes to commit"
         git push
